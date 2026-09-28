@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Funkcja generująca HTML z formularzem i listą plików
+// Funkcja generująca HTML z formularzem, podglądem wybranych plików i listą w katalogu
 func getHTML(hideList bool) string {
 	listContent := ""
 	if !hideList {
@@ -39,12 +39,14 @@ func getHTML(hideList bool) string {
         .filename { font-size: 0.9em; color: #555; }
         #status { font-weight: bold; margin-top: 15px; }
         hr { margin-top: 30px; border: 0; border-top: 1px solid #ccc; }
+        #selectedFilesList { margin-top: 10px; color: #333; font-style: italic; }
     </style>
 </head>
 <body>
     <h2>Wybierz pliki i naciśnij Prześlij</h2>
     <form id="uploadForm">
-        <input type="file" id="fileInput" name="uploadfile" multiple required /><br><br>
+        <input type="file" id="fileInput" name="uploadfile" multiple required /><br>
+        <div id="selectedFilesList"></div><br>
         <input type="submit" value="Prześlij" />
     </form>
 
@@ -54,10 +56,26 @@ func getHTML(hideList bool) string {
     ` + listContent + `
 
     <script>
+        var fileInput = document.getElementById('fileInput');
+        var selectedFilesList = document.getElementById('selectedFilesList');
+
+        // Dynamiczne wyświetlanie listy wybranych plików przed wysłaniem
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files.length > 0) {
+                var listHtml = '<strong>Wybrane pliki do przesłania:</strong><ul>';
+                for (var i = 0; i < fileInput.files.length; i++) {
+                    listHtml += '<li>' + fileInput.files[i].name + '</li>';
+                }
+                listHtml += '</ul>';
+                selectedFilesList.innerHTML = listHtml;
+            } else {
+                selectedFilesList.innerHTML = '';
+            }
+        });
+
         document.getElementById('uploadForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
-            var fileInput = document.getElementById('fileInput');
             if (fileInput.files.length === 0) return;
 
             var files = fileInput.files;
@@ -131,9 +149,9 @@ func getHTML(hideList bool) string {
                         statusDiv.innerText = 'Wszystkie pliki zostały przesłane pomyślnie!';
                         statusDiv.style.color = 'green';
                         
-                        // Czyszczenie formularza i twarde przeładowanie strony po 2 sekundach
                         setTimeout(function() {
                             document.getElementById('uploadForm').reset();
+                            selectedFilesList.innerHTML = ''; // Czyszczenie listy wybranych plików
                             window.location.href = "/";
                         }, 2000);
                     }
