@@ -1,2 +1,13 @@
-/goupser.exe
-/go.sum
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+.idea/
+*.iml
+*.iws
+out/
+*.log
+.DS_Store
+Thumbs.db
+
