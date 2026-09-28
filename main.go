@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Funkcja generująca HTML z formularzem i (jeśli niewyłączona) listą plików
+// Funkcja generująca HTML z formularzem i listą plików
 func getHTML(hideList bool) string {
 	listContent := ""
 	if !hideList {
@@ -130,8 +130,11 @@ func getHTML(hideList bool) string {
                     } else {
                         statusDiv.innerText = 'Wszystkie pliki zostały przesłane pomyślnie!';
                         statusDiv.style.color = 'green';
+                        
+                        // Czyszczenie formularza i twarde przeładowanie strony po 2 sekundach
                         setTimeout(function() {
-                            window.location.reload();
+                            document.getElementById('uploadForm').reset();
+                            window.location.href = "/";
                         }, 2000);
                     }
                 }
