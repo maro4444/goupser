@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	//"://github.com"
 	"github.com/gin-gonic/gin"
 )
 
