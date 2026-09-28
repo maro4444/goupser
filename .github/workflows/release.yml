@@ -1,34 +1,28 @@
 name: release
 
-# 1. KIEDY URUCHOMIĆ (on:)
 on:
   push:
     tags:
-      - 'v*' # Uruchom tylko, gdy zostanie wypchnięty tag zaczynający się od "v" (np. v1.0.0)
-workflow_dispatch:
+      - 'v*'
+  workflow_dispatch:
 
-# Potrzebne uprawnienia dla bota na GitHubie
 permissions:
   contents: write
 
-# 2. CO ZROBIĆ (jobs:)
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
-      # Pobranie kodu
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Pobiera całą historię dla poprawnego changelogu
+          fetch-depth: 0
 
-      # Konfiguracja środowiska Go
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: 'stable'
 
-      # Uruchomienie automatycznego release
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -36,4 +30,4 @@ jobs:
           version: "~> v2"
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Wbudowany token GitHuba
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
