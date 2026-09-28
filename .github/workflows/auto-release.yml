@@ -22,26 +22,26 @@ jobs:
         with:
           go-version: 'stable'
 
-      - name: Create Automatic Tag
+      # Ten krok tworzy tag i WYPYCHA go na serwer, co aktywuje mechanizm Release
+      - name: Create and Push Automatic Tag
         run: |
           COMMITS_COUNT=$(git rev-list --count HEAD)
           TAG_NAME="v0.1.${COMMITS_COUNT}"
+          
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          
           git tag $TAG_NAME
+          git push origin $TAG_NAME # Wypchnięcie taga na serwer
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # GoReleaser bez flagi snapshot automatycznie stworzy oficjalny wpis w zakładce Releases
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean --snapshot
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # TEN KROK WYCIĄGA PLIKI NA WIERZCH DO POBRANIA
-      - name: Upload Compiled Files
-        uses: actions/upload-artifact@v4
-        with:
-          name: my-go-app-builds
-          path: dist/*
