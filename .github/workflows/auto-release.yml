@@ -5,7 +5,6 @@ on:
     branches:
       - master
 
-# Definiujemy pełne uprawnienia zapisu dla kodu i tagów dla bota GitHub Actions
 permissions:
   contents: write
 
@@ -23,19 +22,12 @@ jobs:
         with:
           go-version: 'stable'
 
-      # Bezpieczne nadanie taga lokalnie i przekazanie go do środowiska GoReleaser
       - name: Create Automatic Tag
         run: |
           COMMITS_COUNT=$(git rev-list --count HEAD)
           TAG_NAME="v0.1.${COMMITS_COUNT}"
-          echo "Generowanie automatycznej wersji: $TAG_NAME"
-          
-          # Konfiguracja tożsamości bota
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          
-          # Nadajemy tag tylko lokalnie wewnątrz maszyny wirtualnej,
-          # aby GoReleaser go widział bez konieczności robienia problematycznego "git push"
           git tag $TAG_NAME
 
       - name: Run GoReleaser
@@ -43,8 +35,13 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          # Flaga --snapshot pozwala GoReleaserowi zbudować oficjalne pliki
-          # na podstawie lokalnego taga, ignorując brak taga na zdalnym serwerze
           args: release --clean --snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # TEN KROK WYCIĄGA PLIKI NA WIERZCH DO POBRANIA
+      - name: Upload Compiled Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-go-app-builds
+          path: dist/*
