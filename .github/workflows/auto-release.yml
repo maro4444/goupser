@@ -2,15 +2,38 @@ name: release
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+    branches:
+      - master # Skrypt odpali się przy KAŻDYM zwykłym pushu do gałęzi master
 
 permissions:
   contents: write
 
 jobs:
-  goreleaser:
+  determine_version:
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.semantic.outputs.new_release_version }}
+      new_released: ${{ steps.semantic.outputs.new_release_published }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Automat analizuje commity i jeśli trzeba, tworzy nowy tag (np. v1.0.1)
+      - name: Semantic Release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          extra_plugins: |
+            @semantic-release/changelog
+            @semantic-release/git
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build_and_release:
+    needs: determine_version
+    if: needs.determine_version.outputs.new_released == 'true' # Buduj tylko gdy powstała nowa wersja
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

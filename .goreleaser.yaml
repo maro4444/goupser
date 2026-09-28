@@ -1,31 +1,14 @@
-# .goreleaser.yaml
 version: 2
 
-# Definicja budowania pliku binarnego Go
 builds:
   - env:
-      - CGO_ENABLED=0 # Wyłączenie CGO zapewnia maksymalną przenośność pliku
+      - CGO_ENABLED=0
     goos:
       - linux
       - windows
-      - darwin
     goarch:
       - amd64
-      - arm64
 
-# Jak mają zostać spakowane pliki (zip dla Windows, tar.gz dla reszty)
 archives:
-  - format: tar.gz
-    # Użycie formatu zip tylko dla systemu Windows
-    format_overrides:
-      - goos: windows
-        format: zip
-
-# Automatyczne generowanie historii zmian (Changelog) z commitów
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^chore:'
-      - '^test:'
+  - format: binary
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
