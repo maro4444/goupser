@@ -1,4 +1,4 @@
-module goupser
+module github.com/maro4444/goupser
 
 go 1.27
 
