@@ -10,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Funkcja generująca HTML z formularzem, podglądem wybranych plików i listą w katalogu
 func getHTML(hideList bool) string {
 	listContent := ""
 	if !hideList {
@@ -40,14 +39,16 @@ func getHTML(hideList bool) string {
         #status { font-weight: bold; margin-top: 15px; }
         hr { margin-top: 30px; border: 0; border-top: 1px solid #ccc; }
         #selectedFilesList { margin-top: 10px; color: #333; font-style: italic; }
+        .remove-btn { color: red; margin-left: 10px; cursor: pointer; font-size: 0.8em; font-style: normal; }
     </style>
 </head>
 <body>
     <h2>Wybierz pliki i naciśnij Prześlij</h2>
     <form id="uploadForm">
-        <input type="file" id="fileInput" name="uploadfile" multiple required /><br>
-        <div id="selectedFilesList"></div><br>
-        <input type="submit" value="Prześlij" />
+        <!-- Zmieniono przycisk, aby zachęcał do dodawania kolejnych plików -->
+        <input type="file" id="fileInput" name="uploadfile" multiple /><br><br>
+        <div id="selectedFilesList"></div>
+        <input type="submit" value="Prześlij wszystkie wybrane pliki" />
     </form>
 
     <div id="progressContainer"></div>
@@ -58,27 +59,60 @@ func getHTML(hideList bool) string {
     <script>
         var fileInput = document.getElementById('fileInput');
         var selectedFilesList = document.getElementById('selectedFilesList');
+        
+        // Globalna tablica przechowująca skumulowane pliki do wysłania
+        var filesQueue = [];
 
-        // Dynamiczne wyświetlanie listy wybranych plików przed wysłaniem
+        // Reagowanie na dodanie nowych plików do pola wyboru
         fileInput.addEventListener('change', function() {
-            if (fileInput.files.length > 0) {
-                var listHtml = '<strong>Wybrane pliki do przesłania:</strong><ul>';
-                for (var i = 0; i < fileInput.files.length; i++) {
-                    listHtml += '<li>' + fileInput.files[i].name + '</li>';
+            for (var i = 0; i < fileInput.files.length; i++) {
+                var file = fileInput.files[i];
+                
+                // Unikamy dodawania dokładnie tego samego pliku (o tej samej nazwie i rozmiarze) dwukrotnie
+                var isDuplicate = filesQueue.some(function(f) {
+                    return f.name === file.name && f.size === file.size;
+                });
+                
+                if (!isDuplicate) {
+                    filesQueue.push(file);
                 }
-                listHtml += '</ul>';
+            }
+            updateSelectedFilesListUI();
+            
+            // Czyszczenie samego inputa, aby uczeń mógł kliknąć "Wybierz plik" ponownie 
+            // i wybrać coś innego bez blokowania przeglądarki
+            fileInput.value = '';
+        });
+
+        // Odświeżanie wyglądu listy plików na ekranie (przed wysłaniem)
+        function updateSelectedFilesListUI() {
+            if (filesQueue.length > 0) {
+                var listHtml = '<strong>Wybrane pliki do przesłania:</strong><ul>';
+                for (var i = 0; i < filesQueue.length; i++) {
+                    listHtml += '<li>' + filesQueue[i].name + 
+                                ' <span class="remove-btn" onclick="removeFromFileQueue(' + i + ')">[Usuń]</span></li>';
+                }
+                listHtml += '</ul><br>';
                 selectedFilesList.innerHTML = listHtml;
             } else {
                 selectedFilesList.innerHTML = '';
             }
-        });
+        }
+
+        // Możliwość usunięcia pliku z listy, jeśli uczeń się pomylił przed kliknięciem Wyślij
+        window.removeFromFileQueue = function(index) {
+            filesQueue.splice(index, 1);
+            updateSelectedFilesListUI();
+        };
 
         document.getElementById('uploadForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
-            if (fileInput.files.length === 0) return;
+            if (filesQueue.length === 0) {
+                alert('Najpierw wybierz przynajmniej jeden plik!');
+                return;
+            }
 
-            var files = fileInput.files;
             var container = document.getElementById('progressContainer');
             var statusDiv = document.getElementById('status');
             container.innerHTML = ''; 
@@ -86,7 +120,7 @@ func getHTML(hideList bool) string {
             statusDiv.innerText = 'Przesyłanie plików...';
             statusDiv.style.color = 'black';
 
-            var activeUploads = files.length;
+            var activeUploads = filesQueue.length;
             var hasError = false;
 
             function uploadFile(file) {
@@ -151,15 +185,17 @@ func getHTML(hideList bool) string {
                         
                         setTimeout(function() {
                             document.getElementById('uploadForm').reset();
-                            selectedFilesList.innerHTML = ''; // Czyszczenie listy wybranych plików
+                            selectedFilesList.innerHTML = '';
+                            filesQueue = []; // Reset kolejki plików
                             window.location.href = "/";
                         }, 2000);
                     }
                 }
             }
 
-            for (var i = 0; i < files.length; i++) {
-                uploadFile(files[i]);
+            // Wysłanie wszystkich zgromadzonych w tablicy plików
+            for (var i = 0; i < filesQueue.length; i++) {
+                uploadFile(filesQueue[i]);
             }
         });
     </script>
