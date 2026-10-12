@@ -280,7 +280,9 @@ func downloadVerified(client *http.Client, url, path, wantSum string) error {
 	}
 
 	h := sha256.New()
-	_, copyErr := io.Copy(io.MultiWriter(f, h), resp.Body)
+	progress := newDownloadProgress(resp.ContentLength)
+	_, copyErr := io.Copy(io.MultiWriter(f, h, progress), resp.Body)
+	progress.finish()
 	closeErr := f.Close()
 	if copyErr != nil {
 		return fmt.Errorf("błąd pobierania: %w", copyErr)
@@ -293,4 +295,52 @@ func downloadVerified(client *http.Client, url, path, wantSum string) error {
 		return fmt.Errorf("nieprawidłowa suma kontrolna pobranego pliku")
 	}
 	return nil
+}
+
+// downloadProgress rysuje w jednej linii terminala postęp pobierania nowej wersji.
+type downloadProgress struct {
+	total int64 // -1, gdy serwer nie podał rozmiaru
+	done  int64
+	start time.Time
+	last  time.Time
+	live  bool // czy wyjście jest konsolą, w której można nadpisywać linię
+}
+
+func newDownloadProgress(total int64) *downloadProgress {
+	return &downloadProgress{total: total, start: time.Now(), live: enableANSI(os.Stdout)}
+}
+
+func (p *downloadProgress) Write(b []byte) (int, error) {
+	p.done += int64(len(b))
+	if now := time.Now(); now.Sub(p.last) >= progressRefresh {
+		p.last = now
+		p.draw(now)
+	}
+	return len(b), nil
+}
+
+// draw nadpisuje bieżącą linię terminala aktualnym stanem pobierania.
+func (p *downloadProgress) draw(now time.Time) {
+	if !p.live {
+		return
+	}
+	speed := ""
+	if secs := now.Sub(p.start).Seconds(); secs > 0 {
+		speed = humanSize(int64(float64(p.done)/secs)) + "/s"
+	}
+	if p.total > 0 {
+		fmt.Printf("\r  %s  %s\x1b[K", progressBar(p.done, p.total), speed)
+	} else {
+		fmt.Printf("\r  %s  %s\x1b[K", humanSize(p.done), speed)
+	}
+}
+
+// finish rysuje końcowy stan paska i przechodzi do nowej linii.
+func (p *downloadProgress) finish() {
+	if p.live {
+		p.draw(time.Now())
+		fmt.Println()
+	}
+	elapsed := time.Since(p.start).Round(100 * time.Millisecond)
+	fmt.Printf("Pobrano %s w %s.\n", humanSize(p.done), elapsed)
 }

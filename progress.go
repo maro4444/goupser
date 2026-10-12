@@ -154,14 +154,18 @@ func (t *transfer) line(now time.Time) string {
 		return fmt.Sprintf("  %-15s %-24s %10s  %s", t.client, name, humanSize(done), speed)
 	}
 
+	return fmt.Sprintf("  %-15s %-24s %s  %s", t.client, name, progressBar(done, total), speed)
+}
+
+// progressBar zwraca pasek postępu z procentem i rozmiarem, np. "[███░░] 60%  6.0 MB / 10.0 MB".
+func progressBar(done, total int64) string {
 	ratio := float64(done) / float64(total)
 	if ratio > 1 {
 		ratio = 1
 	}
 	filled := int(ratio * progressBarWidth)
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", progressBarWidth-filled)
-	return fmt.Sprintf("  %-15s %-24s [%s] %3d%%  %s / %s  %s",
-		t.client, name, bar, int(ratio*100), humanSize(done), humanSize(total), speed)
+	return fmt.Sprintf("[%s] %3d%%  %s / %s", bar, int(ratio*100), humanSize(done), humanSize(total))
 }
 
 // shortenName skraca nazwę do max znaków, dodając wielokropek.
