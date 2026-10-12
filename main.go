@@ -53,6 +53,8 @@ Flagi:
   -brak-listy
         Ukrywa listę plików pod formularzem (tryb Blind Drop).
         Ma znaczenie tylko w trybie {WYSYLANIE}.
+  -bez-aktualizacji
+        Nie sprawdza przy starcie, czy jest nowa wersja programu.
   -h, -help
         Wyświetla ten opis i kończy działanie.
 
@@ -77,6 +79,8 @@ Szczegóły:
   - Postęp każdego pobierania (adres klienta, procent, rozmiar, prędkość) jest na bieżąco
     pokazywany w terminalu serwera.
   - Porty poniżej 1024 mogą wymagać uprawnień administratora.
+  - Przy starcie program sprawdza na GitHubie, czy jest nowa wersja (tylko gdy jest
+    internet). Po zgodzie użytkownika pobiera ją, podmienia siebie i uruchamia się ponownie.
   - Nazwy flag można podawać z jednym lub dwoma myślnikami (-port lub --port).
 
 Przykłady:
@@ -566,6 +570,7 @@ func main() {
 	port := flag.Int("port", defaultPort, "Port nasłuchu serwera (zakres 1-65535)")
 	tryb := flag.String("tryb", modeUpload, "Tryb pracy: wysylanie, serwowanie albo oba")
 	hideList := flag.Bool("brak-listy", false, "Ukrywa listę plików pod formularzem (tryb Blind Drop)")
+	noUpdate := flag.Bool("bez-aktualizacji", false, "Nie sprawdza, czy jest nowa wersja programu")
 
 	var showHelp bool
 	flag.BoolVar(&showHelp, "help", false, "Wyświetla opis programu i kończy działanie")
@@ -590,6 +595,11 @@ func main() {
 			*tryb, modeUpload, modeServe, modeBoth)
 		fmt.Fprintf(os.Stderr, "Wpisz '%s --help', aby zobaczyć dostępne opcje.\n", filepath.Base(os.Args[0]))
 		os.Exit(2)
+	}
+
+	cleanupOldExecutable()
+	if !*noUpdate {
+		checkForUpdate()
 	}
 
 	gin.SetMode(gin.ReleaseMode)

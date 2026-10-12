@@ -1,5 +1,15 @@
 *.exe
 *.exe~
+*.test
+
+# Binarki bez rozszerzenia (build na Linuksie) i wynik GoReleasera
+/goupser
+/main
+dist/
+
+# Pliki tymczasowe samoaktualizacji (stara i pobierana wersja programu)
+*.old
+*.new
 *.dll
 *.so
 *.dylib
