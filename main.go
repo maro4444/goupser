@@ -27,6 +27,11 @@ const (
 	modeServe  = "serwowanie"
 	modeBoth   = "oba"
 
+	// Angielskie odpowiedniki trybów, przyjmowane obok polskich nazw.
+	modeUploadEN = "up"
+	modeServeEN  = "down"
+	modeBothEN   = "both"
+
 	// Ścieżki używane w trybach z serwowaniem plików.
 	uploadFormPath = "/wyslij"
 	servePrefix    = "/pliki/"
@@ -44,16 +49,17 @@ Wersja: {WERSJA}
 Sposób użycia:
   {PROG} [flagi]
 
-Tryby pracy (flaga -tryb):
-  {WYSYLANIE}    Odbieranie plików od użytkowników (domyślny). Formularz pod adresem GET /.
-  {SERWOWANIE}   Udostępnianie plików z katalogu, w którym uruchomiono program.
-  {OBA}          Odbieranie i udostępnianie plików jednocześnie.
+Tryby pracy (flaga -tryb, nazwa polska albo angielska):
+  {WYSYLANIE}, {UP}      Odbieranie plików od użytkowników (domyślny). Formularz pod adresem GET /.
+  {SERWOWANIE}, {DOWN}   Udostępnianie plików z katalogu, w którym uruchomiono program.
+  {OBA}, {BOTH}          Odbieranie i udostępnianie plików jednocześnie.
 
 Flagi:
   -port <liczba>
         Port nasłuchu, dozwolony zakres 1-65535 (domyślnie {PORT}).
   -tryb <nazwa>
-        Tryb pracy: {WYSYLANIE}, {SERWOWANIE} albo {OBA} (domyślnie {WYSYLANIE}).
+        Tryb pracy: {WYSYLANIE} ({UP}), {SERWOWANIE} ({DOWN}) albo {OBA} ({BOTH})
+        (domyślnie {WYSYLANIE}).
   -brak-listy
         Ukrywa listę plików pod formularzem (tryb Blind Drop).
         Ma znaczenie tylko w trybie {WYSYLANIE}.
@@ -96,6 +102,7 @@ Przykłady:
   {PROG} -port 8080
   {PROG} -tryb {SERWOWANIE} -port 8080
   {PROG} -tryb {OBA} -port 8080
+  {PROG} -tryb {DOWN}
   {PROG} -brak-listy
 `
 
@@ -107,6 +114,9 @@ func printUsage(w io.Writer) {
 		"{WYSYLANIE}", modeUpload,
 		"{SERWOWANIE}", modeServe,
 		"{OBA}", modeBoth,
+		"{UP}", modeUploadEN,
+		"{DOWN}", modeServeEN,
+		"{BOTH}", modeBothEN,
 		"{PORT}", fmt.Sprintf("%d", defaultPort),
 		"{PLIKI}", servePrefix,
 		"{WYSLIJ}", uploadFormPath,
@@ -474,13 +484,18 @@ func validatePort(port int) error {
 	return nil
 }
 
-// isValidMode sprawdza, czy podany tryb pracy jest obsługiwany.
-func isValidMode(mode string) bool {
-	switch mode {
-	case modeUpload, modeServe, modeBoth:
-		return true
+// normalizeMode zamienia podaną nazwę trybu (polską albo angielską) na polską nazwę,
+// której używa reszta programu. Zwraca false, gdy tryb nie jest obsługiwany.
+func normalizeMode(raw string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case modeUpload, modeUploadEN:
+		return modeUpload, true
+	case modeServe, modeServeEN:
+		return modeServe, true
+	case modeBoth, modeBothEN:
+		return modeBoth, true
 	default:
-		return false
+		return "", false
 	}
 }
 
@@ -577,7 +592,7 @@ func handleListPage(showUploadButton bool) gin.HandlerFunc {
 
 func main() {
 	port := flag.Int("port", defaultPort, "Port nasłuchu serwera (zakres 1-65535)")
-	tryb := flag.String("tryb", modeUpload, "Tryb pracy: wysylanie, serwowanie albo oba")
+	tryb := flag.String("tryb", modeUpload, "Tryb pracy: wysylanie (up), serwowanie (down) albo oba (both)")
 	hideList := flag.Bool("brak-listy", false, "Ukrywa listę plików pod formularzem (tryb Blind Drop)")
 	noUpdate := flag.Bool("bez-aktualizacji", false, "Nie sprawdza, czy jest nowa wersja programu")
 
@@ -609,15 +624,15 @@ func main() {
 		return
 	}
 
-	mode := strings.ToLower(strings.TrimSpace(*tryb))
 	if err := validatePort(*port); err != nil {
 		fmt.Fprintf(os.Stderr, "Błąd: %v\n\n", err)
 		fmt.Fprintf(os.Stderr, "Wpisz '%s --help', aby zobaczyć dostępne opcje.\n", filepath.Base(os.Args[0]))
 		os.Exit(2)
 	}
-	if !isValidMode(mode) {
-		fmt.Fprintf(os.Stderr, "Błąd: nieznany tryb pracy %q. Dozwolone wartości: %s, %s, %s.\n\n",
-			*tryb, modeUpload, modeServe, modeBoth)
+	mode, ok := normalizeMode(*tryb)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "Błąd: nieznany tryb pracy %q. Dozwolone wartości: %s (%s), %s (%s), %s (%s).\n\n",
+			*tryb, modeUpload, modeUploadEN, modeServe, modeServeEN, modeBoth, modeBothEN)
 		fmt.Fprintf(os.Stderr, "Wpisz '%s --help', aby zobaczyć dostępne opcje.\n", filepath.Base(os.Args[0]))
 		os.Exit(2)
 	}
