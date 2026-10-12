@@ -605,6 +605,7 @@ func main() {
 		fmt.Printf("goupser %s\n", versionString())
 		fmt.Printf("Autor: %s\n", author)
 		fmt.Printf("Strona: %s\n", repoURL)
+		fmt.Printf("2026\n")
 		return
 	}
 
