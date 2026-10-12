@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	defaultPort = 8080
+	defaultPort = 9000
 
 	author  = "Maro"
 	repoURL = "https://github.com/maro4444/goupser"
@@ -93,9 +93,9 @@ Szczegóły:
 
 Przykłady:
   {PROG}
-  {PROG} -port 9000
-  {PROG} -tryb {SERWOWANIE} -port 9000
-  {PROG} -tryb {OBA} -port 9000
+  {PROG} -port 8080
+  {PROG} -tryb {SERWOWANIE} -port 8080
+  {PROG} -tryb {OBA} -port 8080
   {PROG} -brak-listy
 `
 
@@ -668,6 +668,7 @@ func main() {
 		workDir = "."
 	}
 
+	fmt.Printf("goupser %s\n", versionString())
 	fmt.Printf("Serwer gotowy. Port: %d (tryb: %s)\n", *port, mode)
 	fmt.Printf("Katalog plików: %s\n", workDir)
 
