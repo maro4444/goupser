@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -73,6 +74,8 @@ Szczegóły:
     bez podkatalogów i bez plików, których nazwa zaczyna się kropką.
   - Wgrywanie plików o nazwie zaczynającej się kropką jest odrzucane.
   - Kliknięcie pliku na liście prosi o potwierdzenie, a następnie rozpoczyna pobieranie.
+  - Postęp każdego pobierania (adres klienta, procent, rozmiar, prędkość) jest na bieżąco
+    pokazywany w terminalu serwera.
   - Porty poniżej 1024 mogą wymagać uprawnień administratora.
   - Nazwy flag można podawać z jednym lub dwoma myślnikami (-port lub --port).
 
@@ -376,7 +379,7 @@ func renderFilesList(files []fileEntry) string {
 	for _, f := range files {
 		name := html.EscapeString(f.Name)
 		href := html.EscapeString(servePrefix + url.PathEscape(f.Name))
-		b.WriteString(`<li><a href="` + href + `" data-nazwa="` + name +
+		b.WriteString(`<li><a href="` + href + `" download="` + name + `" data-nazwa="` + name +
 			`" onclick="return potwierdzPobranie(this)">` + name + `</a>` +
 			`<span class="rozmiar">` + humanSize(f.Size) + `</span></li>`)
 	}
@@ -507,28 +510,44 @@ func handleUpload(c *gin.Context) {
 	c.String(http.StatusOK, "OK")
 }
 
-// handleServeFile wysyła plik z katalogu uruchomienia programu.
-func handleServeFile(c *gin.Context) {
-	name := c.Param("name")
-	if !isServableName(name) {
-		c.String(http.StatusNotFound, "Nie znaleziono pliku")
-		return
-	}
+// handleServeFile wysyła plik z katalogu uruchomienia programu,
+// pokazując postęp pobierania w terminalu.
+func handleServeFile(board *progressBoard) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		name := c.Param("name")
+		if !isServableName(name) {
+			c.String(http.StatusNotFound, "Nie znaleziono pliku")
+			return
+		}
 
-	workDir, err := os.Getwd()
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Błąd serwera")
-		return
-	}
+		workDir, err := os.Getwd()
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Błąd serwera")
+			return
+		}
 
-	fullPath := filepath.Join(workDir, name)
-	info, err := os.Stat(fullPath)
-	if err != nil || info.IsDir() {
-		c.String(http.StatusNotFound, "Nie znaleziono pliku")
-		return
-	}
+		fullPath := filepath.Join(workDir, name)
+		info, err := os.Stat(fullPath)
+		if err != nil || info.IsDir() {
+			c.String(http.StatusNotFound, "Nie znaleziono pliku")
+			return
+		}
 
-	c.File(fullPath)
+		// Bez "attachment" przeglądarka wyświetla pliki tekstowe, PDF-y czy obrazki
+		// zamiast je pobrać.
+		disposition := mime.FormatMediaType("attachment", map[string]string{"filename": name})
+		if disposition == "" {
+			disposition = "attachment"
+		}
+		c.Header("Content-Disposition", disposition)
+		// Bez tego przeglądarka może pokazać zapamiętaną kopię pliku, nie pytając serwera.
+		c.Header("Cache-Control", "no-store")
+
+		t := board.start(c.ClientIP(), name)
+		c.Writer = &countingWriter{ResponseWriter: c.Writer, t: t}
+		c.File(fullPath)
+		board.finish(t, c.Writer.Status())
+	}
 }
 
 // handleListPage pokazuje listę plików dostępnych do pobrania.
@@ -575,6 +594,11 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 
+	// Logi Gina idą przez tablicę postępu, żeby nie rozbijały pasków pobierania.
+	board := newProgressBoard(os.Stdout)
+	gin.DefaultWriter = board
+	gin.DefaultErrorWriter = board
+
 	// r zastępuje router/silnik Gin
 	r := gin.Default()
 
@@ -592,7 +616,7 @@ func main() {
 
 	case modeServe:
 		r.GET("/", handleListPage(false))
-		r.GET("/pliki/:name", handleServeFile)
+		r.GET("/pliki/:name", handleServeFile(board))
 
 	case modeBoth:
 		r.GET("/", handleListPage(true))
@@ -602,7 +626,7 @@ func main() {
 			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(page))
 		})
 		r.POST(uploadFormPath, handleUpload)
-		r.GET("/pliki/:name", handleServeFile)
+		r.GET("/pliki/:name", handleServeFile(board))
 	}
 
 	workDir, err := os.Getwd()
