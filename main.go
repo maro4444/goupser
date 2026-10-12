@@ -19,6 +19,9 @@ import (
 const (
 	defaultPort = 8080
 
+	author  = "Maro"
+	repoURL = "https://github.com/maro4444/goupser"
+
 	// Tryby pracy serwera (wartości flagi -tryb).
 	modeUpload = "wysylanie"
 	modeServe  = "serwowanie"
@@ -58,6 +61,8 @@ Flagi:
         Nie sprawdza przy starcie, czy jest nowa wersja programu.
   -v, -version
         Wyświetla wersję programu i kończy działanie.
+  -credits
+        Wyświetla informacje o autorze i kończy działanie.
   -h, -help
         Wyświetla ten opis i kończy działanie.
 
@@ -583,6 +588,7 @@ func main() {
 	var showVersion bool
 	flag.BoolVar(&showVersion, "version", false, "Wyświetla wersję programu i kończy działanie")
 	flag.BoolVar(&showVersion, "v", false, "Skrót flagi -version")
+	showCredits := flag.Bool("credits", false, "Wyświetla informacje o autorze i kończy działanie")
 
 	flag.Usage = func() { printUsage(os.Stderr) }
 	flag.Parse()
@@ -593,6 +599,12 @@ func main() {
 	}
 	if showVersion {
 		fmt.Printf("goupser %s\n", versionString())
+		return
+	}
+	if *showCredits {
+		fmt.Printf("goupser %s\n", versionString())
+		fmt.Printf("Autor: %s\n", author)
+		fmt.Printf("Strona: %s\n", repoURL)
 		return
 	}
 
