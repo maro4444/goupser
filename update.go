@@ -33,6 +33,14 @@ const (
 // Wersja "dev" oznacza build lokalny, który się nie aktualizuje.
 var version = "dev"
 
+// versionString zwraca wersję programu do wyświetlenia, np. "v0.1.22".
+func versionString() string {
+	if version == "dev" {
+		return "dev (build lokalny, bez automatycznych aktualizacji)"
+	}
+	return "v" + strings.TrimPrefix(version, "v")
+}
+
 type githubRelease struct {
 	TagName string        `json:"tag_name"`
 	Assets  []githubAsset `json:"assets"`
@@ -58,7 +66,7 @@ func checkForUpdate() {
 		return
 	}
 
-	fmt.Printf("Dostępna jest nowa wersja %s (obecna: v%s).\n", rel.TagName, strings.TrimPrefix(version, "v"))
+	fmt.Printf("Dostępna jest nowa wersja %s (obecna: %s).\n", rel.TagName, versionString())
 	if !isInteractive() {
 		fmt.Println("Aby zaktualizować, uruchom program w terminalu.")
 		return

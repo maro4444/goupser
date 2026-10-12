@@ -36,6 +36,7 @@ type fileEntry struct {
 }
 
 const usageTemplate = `{PROG} - prosty serwer do wysyłania i pobierania plików w sieci lokalnej.
+Wersja: {WERSJA}
 
 Sposób użycia:
   {PROG} [flagi]
@@ -55,6 +56,8 @@ Flagi:
         Ma znaczenie tylko w trybie {WYSYLANIE}.
   -bez-aktualizacji
         Nie sprawdza przy starcie, czy jest nowa wersja programu.
+  -v, -version
+        Wyświetla wersję programu i kończy działanie.
   -h, -help
         Wyświetla ten opis i kończy działanie.
 
@@ -95,6 +98,7 @@ Przykłady:
 func printUsage(w io.Writer) {
 	r := strings.NewReplacer(
 		"{PROG}", filepath.Base(os.Args[0]),
+		"{WERSJA}", versionString(),
 		"{WYSYLANIE}", modeUpload,
 		"{SERWOWANIE}", modeServe,
 		"{OBA}", modeBoth,
@@ -576,11 +580,19 @@ func main() {
 	flag.BoolVar(&showHelp, "help", false, "Wyświetla opis programu i kończy działanie")
 	flag.BoolVar(&showHelp, "h", false, "Skrót flagi -help")
 
+	var showVersion bool
+	flag.BoolVar(&showVersion, "version", false, "Wyświetla wersję programu i kończy działanie")
+	flag.BoolVar(&showVersion, "v", false, "Skrót flagi -version")
+
 	flag.Usage = func() { printUsage(os.Stderr) }
 	flag.Parse()
 
 	if showHelp {
 		printUsage(os.Stdout)
+		return
+	}
+	if showVersion {
+		fmt.Printf("goupser %s\n", versionString())
 		return
 	}
 
