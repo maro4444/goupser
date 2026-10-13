@@ -712,7 +712,6 @@ func main() {
 		}
 	}
 
-	printAddr("Adres na tym komputerze:", "localhost")
 	primary, hasRoute := primaryLANAddr()
 	if hasRoute {
 		printAddr("Adres w sieci lokalnej: ", primary)
@@ -721,7 +720,8 @@ func main() {
 	// tylko na życzenie. Bez trasy domyślnej nie wiadomo, który adres jest właściwy,
 	// więc wtedy pokazujemy wszystkie.
 	if !hasRoute || *allIfaces {
-		for _, ip := range lanIPv4Addrs() {
+		others := lanIPv4Addrs()
+		for _, ip := range others {
 			if ip == primary {
 				continue
 			}
@@ -730,6 +730,10 @@ func main() {
 			} else {
 				printAddr("Adres w sieci lokalnej: ", ip)
 			}
+		}
+		// Komputer bez żadnej sieci: zostaje tylko dostęp lokalny.
+		if !hasRoute && len(others) == 0 {
+			printAddr("Adres:                  ", "localhost")
 		}
 	}
 	// Bez trasy domyślnej nie ma internetu, więc nie ma też kogo pytać przez STUN.
