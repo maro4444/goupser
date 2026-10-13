@@ -6,6 +6,7 @@ import (
 	"html"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -688,14 +689,17 @@ func main() {
 	fmt.Printf("Serwer gotowy. Port: %d (tryb: %s)\n", *port, mode)
 	fmt.Printf("Katalog plików: %s\n", workDir)
 
-	switch mode {
-	case modeUpload:
-		fmt.Printf("Adres: http://localhost:%d/ (formularz wysyłania plików)\n", *port)
-	case modeServe:
-		fmt.Printf("Adres: http://localhost:%d/ (lista plików do pobrania)\n", *port)
-	case modeBoth:
-		fmt.Printf("Adres: http://localhost:%d/ (lista plików), http://localhost:%d%s (wysyłanie plików)\n",
-			*port, *port, uploadFormPath)
+	hosts := append([]string{"localhost"}, lanIPv4Addrs()...)
+	for _, host := range hosts {
+		switch mode {
+		case modeUpload:
+			fmt.Printf("Adres: http://%s:%d/ (formularz wysyłania plików)\n", host, *port)
+		case modeServe:
+			fmt.Printf("Adres: http://%s:%d/ (lista plików do pobrania)\n", host, *port)
+		case modeBoth:
+			fmt.Printf("Adres: http://%s:%d/ (lista plików), http://%s:%d%s (wysyłanie plików)\n",
+				host, *port, host, *port, uploadFormPath)
+		}
 	}
 
 	if *hideList {
@@ -716,4 +720,35 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Nie udało się uruchomić serwera na porcie %d: %v\n", *port, err)
 		os.Exit(1)
 	}
+}
+
+// lanIPv4Addrs zwraca prywatne adresy IPv4 aktywnych interfejsów sieciowych,
+// czyli adresy, pod którymi serwer jest osiągalny z sieci lokalnej.
+func lanIPv4Addrs() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var addrs []string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		ifAddrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range ifAddrs {
+			ipNet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipNet.IP.To4()
+			if ip == nil || !ip.IsPrivate() {
+				continue
+			}
+			addrs = append(addrs, ip.String())
+		}
+	}
+	return addrs
 }
