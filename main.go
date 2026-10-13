@@ -6,7 +6,6 @@ import (
 	"html"
 	"io"
 	"mime"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -66,6 +65,11 @@ Flagi:
         Ma znaczenie tylko w trybie {WYSYLANIE}.
   -bez-aktualizacji
         Nie sprawdza przy starcie, czy jest nowa wersja programu.
+  -bez-stun
+        Nie ustala przy starcie adresu zewnętrznego (publicznego) przez serwer STUN.
+  -wszystkie-adresy
+        Pokazuje przy starcie także adresy pozostałych interfejsów sieciowych
+        (np. wirtualnych kart Hyper-V, WSL, VirtualBox).
   -v, -version
         Wyświetla wersję programu i kończy działanie.
   -credits
@@ -96,6 +100,11 @@ Szczegóły:
   - Porty poniżej 1024 mogą wymagać uprawnień administratora.
   - Przy starcie program sprawdza na GitHubie, czy jest nowa wersja (tylko gdy jest
     internet). Po zgodzie użytkownika pobiera ją, podmienia siebie i uruchamia się ponownie.
+  - Przy starcie program pokazuje adres w sieci lokalnej (interfejs z trasą domyślną)
+    oraz adres zewnętrzny ustalony przez publiczny serwer STUN (Google, zapasowo
+    Cloudflare). Adres zewnętrzny działa z internetu tylko po przekierowaniu portu
+    na routerze. Adresy pozostałych interfejsów (np. wirtualnych Hyper-V/WSL) są
+    pokazywane z flagą -wszystkie-adresy, a także wtedy, gdy nie ma trasy domyślnej.
   - Nazwy flag można podawać z jednym lub dwoma myślnikami (-port lub --port).
 
 Przykłady:
@@ -596,6 +605,8 @@ func main() {
 	tryb := flag.String("tryb", modeUpload, "Tryb pracy: wysylanie (up), serwowanie (down) albo oba (both)")
 	hideList := flag.Bool("brak-listy", false, "Ukrywa listę plików pod formularzem (tryb Blind Drop)")
 	noUpdate := flag.Bool("bez-aktualizacji", false, "Nie sprawdza, czy jest nowa wersja programu")
+	noSTUN := flag.Bool("bez-stun", false, "Nie ustala adresu zewnętrznego przez serwer STUN")
+	allIfaces := flag.Bool("wszystkie-adresy", false, "Pokazuje też adresy pozostałych interfejsów (np. wirtualnych)")
 
 	var showHelp bool
 	flag.BoolVar(&showHelp, "help", false, "Wyświetla opis programu i kończy działanie")
@@ -689,16 +700,43 @@ func main() {
 	fmt.Printf("Serwer gotowy. Port: %d (tryb: %s)\n", *port, mode)
 	fmt.Printf("Katalog plików: %s\n", workDir)
 
-	hosts := append([]string{"localhost"}, lanIPv4Addrs()...)
-	for _, host := range hosts {
+	printAddr := func(label, host string) {
 		switch mode {
 		case modeUpload:
-			fmt.Printf("Adres: http://%s:%d/ (formularz wysyłania plików)\n", host, *port)
+			fmt.Printf("%s http://%s:%d/ (formularz wysyłania plików)\n", label, host, *port)
 		case modeServe:
-			fmt.Printf("Adres: http://%s:%d/ (lista plików do pobrania)\n", host, *port)
+			fmt.Printf("%s http://%s:%d/ (lista plików do pobrania)\n", label, host, *port)
 		case modeBoth:
-			fmt.Printf("Adres: http://%s:%d/ (lista plików), http://%s:%d%s (wysyłanie plików)\n",
-				host, *port, host, *port, uploadFormPath)
+			fmt.Printf("%s http://%s:%d/ (lista plików), http://%s:%d%s (wysyłanie plików)\n",
+				label, host, *port, host, *port, uploadFormPath)
+		}
+	}
+
+	printAddr("Adres na tym komputerze:", "localhost")
+	primary, hasRoute := primaryLANAddr()
+	if hasRoute {
+		printAddr("Adres w sieci lokalnej: ", primary)
+	}
+	// Pozostałe interfejsy to zwykle karty wirtualne (Hyper-V, WSL), więc pokazujemy je
+	// tylko na życzenie. Bez trasy domyślnej nie wiadomo, który adres jest właściwy,
+	// więc wtedy pokazujemy wszystkie.
+	if !hasRoute || *allIfaces {
+		for _, ip := range lanIPv4Addrs() {
+			if ip == primary {
+				continue
+			}
+			if hasRoute {
+				printAddr("Inny interfejs:         ", ip)
+			} else {
+				printAddr("Adres w sieci lokalnej: ", ip)
+			}
+		}
+	}
+	// Bez trasy domyślnej nie ma internetu, więc nie ma też kogo pytać przez STUN.
+	if hasRoute && !*noSTUN {
+		if ip, err := publicAddrSTUN(); err == nil && ip != primary {
+			printAddr("Adres zewnętrzny:       ", ip)
+			fmt.Printf("  (działa z internetu tylko po przekierowaniu portu %d na routerze)\n", *port)
 		}
 	}
 
@@ -720,35 +758,4 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Nie udało się uruchomić serwera na porcie %d: %v\n", *port, err)
 		os.Exit(1)
 	}
-}
-
-// lanIPv4Addrs zwraca prywatne adresy IPv4 aktywnych interfejsów sieciowych,
-// czyli adresy, pod którymi serwer jest osiągalny z sieci lokalnej.
-func lanIPv4Addrs() []string {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil
-	}
-	var addrs []string
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		ifAddrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, a := range ifAddrs {
-			ipNet, ok := a.(*net.IPNet)
-			if !ok {
-				continue
-			}
-			ip := ipNet.IP.To4()
-			if ip == nil || !ip.IsPrivate() {
-				continue
-			}
-			addrs = append(addrs, ip.String())
-		}
-	}
-	return addrs
 }
