@@ -32,6 +32,10 @@ const (
 	modeServeEN  = "down"
 	modeBothEN   = "both"
 
+	// Wewnętrzny tryb strony z linkiem, włączany flagą -link.
+	// Nie można go podać w -tryb, bo strona z linkiem nie ma nic wspólnego z plikami.
+	modeLink = "link"
+
 	// Ścieżki używane w trybach z serwowaniem plików.
 	uploadFormPath = "/wyslij"
 	servePrefix    = "/pliki/"
@@ -63,6 +67,10 @@ Flagi:
   -brak-listy
         Ukrywa listę plików pod formularzem (tryb Blind Drop).
         Ma znaczenie tylko w trybie {WYSYLANIE}.
+  -link <adres>
+        Zamiast listy plików i formularza wyświetla stronę z klikalnym linkiem.
+        Podany link zastępuje tryb pracy: -tryb i -brak-listy są wtedy ignorowane,
+        a wszystkie adresy poza GET / zwracają 404. Adres bez schematu dostaje https://.
   -bez-aktualizacji
         Nie sprawdza przy starcie, czy jest nowa wersja programu.
   -bez-stun
@@ -86,6 +94,7 @@ Adresy:
                      GET  {WYSLIJ}           formularz wysyłania plików
                      POST {WYSLIJ}           przyjęcie pliku
                      GET  {PLIKI}<nazwa>    pobranie pliku
+  -link                GET  /                  strona z klikalnym linkiem (tylko ta strona)
 
 Szczegóły:
   - Serwer nasłuchuje na wszystkich interfejsach (0.0.0.0) i wybranym porcie.
@@ -106,6 +115,8 @@ Szczegóły:
     na routerze. Adresy pozostałych interfejsów (np. wirtualnych Hyper-V/WSL) są
     pokazywane z flagą -wszystkie-adresy, a także wtedy, gdy nie ma trasy domyślnej.
   - Nazwy flag można podawać z jednym lub dwoma myślnikami (-port lub --port).
+  - Flaga -link nie łączy się z trybami pracy: strona zawiera wyłącznie klikalny link,
+    bez listy plików i bez formularza wysyłania. Pozostałe adresy zwracają 404.
 
 Przykłady:
   {PROG}
@@ -114,6 +125,7 @@ Przykłady:
   {PROG} -tryb {OBA} -port 8080
   {PROG} -tryb {DOWN}
   {PROG} -brak-listy
+  {PROG} -link https://example.com
 `
 
 // printUsage wypisuje opis programu, flag i trybów pracy.
@@ -346,6 +358,32 @@ const listPageTemplate = `<!DOCTYPE html>
 </body>
 </html>`
 
+const linkPageTemplate = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Link</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        h2 { margin-bottom: 5px; }
+        .info { color: #555; font-size: 0.9em; margin-bottom: 20px; }
+        .link a { color: #0645ad; font-size: 1.25em; word-break: break-all; }
+        .link a:hover { text-decoration: none; }
+    </style>
+</head>
+<body>
+    <h2>Link</h2>
+    <div class="info">Kliknij link, aby go otworzyć.</div>
+    <p class="link"><a href="{LINK}" target="_blank" rel="noopener noreferrer">{LINK}</a></p>
+</body>
+</html>`
+
+// renderLinkPage buduje stronę zawierającą wyłącznie klikalny link.
+func renderLinkPage(target string) string {
+	return strings.ReplaceAll(linkPageTemplate, "{LINK}", html.EscapeString(target))
+}
+
 // renderUploadPage buduje stronę z formularzem wysyłania plików.
 // uploadURL to adres, na który trafia POST; returnURL to adres otwierany po udanym wysłaniu.
 func renderUploadPage(hideList bool, uploadURL, returnURL string, backToList bool) string {
@@ -509,6 +547,31 @@ func normalizeMode(raw string) (string, bool) {
 	}
 }
 
+// normalizeLinkURL sprawdza adres linku i uzupełnia brakujący schemat (https://).
+// Dopuszczone są wyłącznie adresy http i https, żeby nie dało się wstawić np. javascript:.
+func normalizeLinkURL(raw string) (string, error) {
+	addr := strings.TrimSpace(raw)
+	if addr == "" {
+		return "", fmt.Errorf("pusty adres linku")
+	}
+	if !strings.Contains(addr, "://") {
+		addr = "https://" + addr
+	}
+
+	u, err := url.Parse(addr)
+	if err != nil {
+		return "", fmt.Errorf("nieprawidłowy adres linku %q: %v", raw, err)
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("nieprawidłowy adres linku %q: dozwolone są tylko adresy http i https", raw)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("nieprawidłowy adres linku %q: brak nazwy serwera", raw)
+	}
+	return u.String(), nil
+}
+
 func getUniqueFilename(filename string) string {
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		return filename
@@ -604,6 +667,7 @@ func main() {
 	port := flag.Int("port", defaultPort, "Port nasłuchu serwera (zakres 1-65535)")
 	tryb := flag.String("tryb", modeUpload, "Tryb pracy: wysylanie (up), serwowanie (down) albo oba (both)")
 	hideList := flag.Bool("brak-listy", false, "Ukrywa listę plików pod formularzem (tryb Blind Drop)")
+	linkURL := flag.String("link", "", "Adres strony pokazywanej zamiast listy plików i formularza (tylko link)")
 	noUpdate := flag.Bool("bez-aktualizacji", false, "Nie sprawdza, czy jest nowa wersja programu")
 	noSTUN := flag.Bool("bez-stun", false, "Nie ustala adresu zewnętrznego przez serwer STUN")
 	allIfaces := flag.Bool("wszystkie-adresy", false, "Pokazuje też adresy pozostałych interfejsów (np. wirtualnych)")
@@ -649,6 +713,19 @@ func main() {
 		os.Exit(2)
 	}
 
+	// Flaga -link zastępuje tryb pracy: serwer pokazuje tylko stronę z linkiem.
+	linkTarget := ""
+	if *linkURL != "" {
+		normalized, err := normalizeLinkURL(*linkURL)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Błąd: %v\n\n", err)
+			fmt.Fprintf(os.Stderr, "Wpisz '%s --help', aby zobaczyć dostępne opcje.\n", filepath.Base(os.Args[0]))
+			os.Exit(2)
+		}
+		linkTarget = normalized
+		mode = modeLink
+	}
+
 	cleanupOldExecutable()
 	if !*noUpdate {
 		checkForUpdate()
@@ -669,6 +746,11 @@ func main() {
 	})
 
 	switch mode {
+	case modeLink:
+		r.GET("/", func(c *gin.Context) {
+			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(renderLinkPage(linkTarget)))
+		})
+
 	case modeUpload:
 		r.GET("/", func(c *gin.Context) {
 			page := renderUploadPage(*hideList, "/", "/", false)
@@ -698,10 +780,16 @@ func main() {
 
 	fmt.Printf("goupser %s\n", versionString())
 	fmt.Printf("Serwer gotowy. Port: %d (tryb: %s)\n", *port, mode)
-	fmt.Printf("Katalog plików: %s\n", workDir)
+	if mode == modeLink {
+		fmt.Printf("Link: %s\n", linkTarget)
+	} else {
+		fmt.Printf("Katalog plików: %s\n", workDir)
+	}
 
 	printAddr := func(label, host string) {
 		switch mode {
+		case modeLink:
+			fmt.Printf("%s http://%s:%d/ (strona z linkiem)\n", label, host, *port)
 		case modeUpload:
 			fmt.Printf("%s http://%s:%d/ (formularz wysyłania plików)\n", label, host, *port)
 		case modeServe:
@@ -745,9 +833,12 @@ func main() {
 	}
 
 	if *hideList {
-		if mode == modeUpload {
+		switch mode {
+		case modeUpload:
 			fmt.Println("Tryb podglądu listy plików: WYŁĄCZONY (Blind Drop)")
-		} else {
+		case modeLink:
+			fmt.Println("Uwaga: flaga -brak-listy jest ignorowana w trybie -link.")
+		default:
 			fmt.Println("Uwaga: flaga -brak-listy jest ignorowana w tym trybie (lista plików jest częścią serwowania).")
 		}
 	} else if mode == modeUpload {
