@@ -152,17 +152,22 @@ const uploadPageTemplate = `<!DOCTYPE html>
         #selectedFilesList { margin-top: 10px; color: #333; font-style: italic; }
         .remove-btn { color: red; margin-left: 10px; cursor: pointer; font-size: 0.8em; font-style: normal; }
         .nav { margin-bottom: 20px; }
+        #uploadForm input[type="submit"],
+        #uploadForm input[type="file"]::file-selector-button {
+            padding: 14px 6px;
+        }
         {DRAGDROP_CSS}
     </style>
 </head>
 <body>
     <h2>Wybierz pliki i naciśnij Prześlij</h2>
     {BACK_LINK}
-    {DRAGDROP_ZONE}
     <form id="uploadForm">
+        <div id="dropZone">{DRAGDROP_ZONE}
         <!-- Zmieniono przycisk, aby zachęcał do dodawania kolejnych plików -->
         <input type="file" id="fileInput" name="uploadfile" multiple /><br><br>
         <div id="selectedFilesList"></div>
+        </div>
         <input type="submit" value="Prześlij wszystkie wybrane pliki" />
     </form>
 
@@ -361,7 +366,6 @@ const dragDropCSS = `
             border-radius: 8px;
             padding: 18px;
             margin: 10px 0 15px 0;
-            text-align: center;
             color: #555;
             background: #fafafa;
         }
@@ -369,10 +373,11 @@ const dragDropCSS = `
             border-color: #4a90d9;
             background: #eef4fb;
             color: #2a5d8a;
-        }`
+        }
+        #dropZone .drop-hint { text-align: center; }`
 
-// dragDropZone to widoczny obszar, na który można upuścić pliki.
-const dragDropZone = `<div id="dropZone">Przeciągnij pliki tutaj, aby dodać je do wysyłki</div>`
+// dragDropZone to podpowiedź wewnątrz obszaru drop (same obramowanie nakłada #dropZone).
+const dragDropZone = `<p class="drop-hint" style="margin-top:0">Przeciągnij pliki tutaj, aby dodać je do wysyłki</p>`
 
 // dragDropScript obsługuje upuszczenie plików w dowolnym miejscu strony;
 // obszar drop służy jako wizualny cel, który podświetla się podczas przeciągania.
