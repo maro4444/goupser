@@ -32,6 +32,10 @@ const (
 	modeServeEN  = "down"
 	modeBothEN   = "both"
 
+	// Wewnętrzny tryb strony z linkiem, włączany flagą -link.
+	// Nie można go podać w -tryb, bo strona z linkiem nie ma nic wspólnego z plikami.
+	modeLink = "link"
+
 	// Ścieżki używane w trybach z serwowaniem plików.
 	uploadFormPath = "/wyslij"
 	servePrefix    = "/pliki/"
@@ -63,9 +67,10 @@ Flagi:
   -brak-listy
         Ukrywa listę plików pod formularzem (tryb Blind Drop).
         Ma znaczenie tylko w trybie {WYSYLANIE}.
-  -bez-przeciagania
-        Wyłącza przeciąganie plików na stronę (obszar drop).
-        Ma znaczenie tylko w trybach z formularzem wysyłania.
+  -link <adres>
+        Zamiast listy plików i formularza wyświetla stronę z klikalnym linkiem.
+        Podany link zastępuje tryb pracy: -tryb i -brak-listy są wtedy ignorowane,
+        a wszystkie adresy poza GET / zwracają 404. Adres bez schematu dostaje https://.
   -bez-aktualizacji
         Nie sprawdza przy starcie, czy jest nowa wersja programu.
   -bez-stun
@@ -89,6 +94,7 @@ Adresy:
                      GET  {WYSLIJ}           formularz wysyłania plików
                      POST {WYSLIJ}           przyjęcie pliku
                      GET  {PLIKI}<nazwa>    pobranie pliku
+  -link                GET  /                  strona z klikalnym linkiem (tylko ta strona)
 
 Szczegóły:
   - Serwer nasłuchuje na wszystkich interfejsach (0.0.0.0) i wybranym porcie.
@@ -109,6 +115,8 @@ Szczegóły:
     na routerze. Adresy pozostałych interfejsów (np. wirtualnych Hyper-V/WSL) są
     pokazywane z flagą -wszystkie-adresy, a także wtedy, gdy nie ma trasy domyślnej.
   - Nazwy flag można podawać z jednym lub dwoma myślnikami (-port lub --port).
+  - Flaga -link nie łączy się z trybami pracy: strona zawiera wyłącznie klikalny link,
+    bez listy plików i bez formularza wysyłania. Pozostałe adresy zwracają 404.
 
 Przykłady:
   {PROG}
@@ -117,6 +125,7 @@ Przykłady:
   {PROG} -tryb {OBA} -port 8080
   {PROG} -tryb {DOWN}
   {PROG} -brak-listy
+  {PROG} -link https://example.com
 `
 
 // printUsage wypisuje opis programu, flag i trybów pracy.
@@ -134,10 +143,7 @@ func printUsage(w io.Writer) {
 		"{PLIKI}", servePrefix,
 		"{WYSLIJ}", uploadFormPath,
 	)
-	_, err := fmt.Fprint(w, r.Replace(usageTemplate))
-	if err != nil {
-		return
-	}
+	fmt.Fprint(w, r.Replace(usageTemplate))
 }
 
 const uploadPageTemplate = `<!DOCTYPE html>
@@ -155,22 +161,15 @@ const uploadPageTemplate = `<!DOCTYPE html>
         #selectedFilesList { margin-top: 10px; color: #333; font-style: italic; }
         .remove-btn { color: red; margin-left: 10px; cursor: pointer; font-size: 0.8em; font-style: normal; }
         .nav { margin-bottom: 20px; }
-        #uploadForm input[type="submit"],
-        #uploadForm input[type="file"]::file-selector-button {
-            padding: 14px 6px;
-        }
-        {DRAGDROP_CSS}
     </style>
 </head>
 <body>
     <h2>Wybierz pliki i naciśnij Prześlij</h2>
     {BACK_LINK}
     <form id="uploadForm">
-        <div id="dropZone">{DRAGDROP_ZONE}
         <!-- Zmieniono przycisk, aby zachęcał do dodawania kolejnych plików -->
         <input type="file" id="fileInput" name="uploadfile" multiple /><br><br>
         <div id="selectedFilesList"></div>
-        </div>
         <input type="submit" value="Prześlij wszystkie wybrane pliki" />
     </form>
 
@@ -186,29 +185,26 @@ const uploadPageTemplate = `<!DOCTYPE html>
         // Globalna tablica przechowująca skumulowane pliki do wysłania
         var filesQueue = [];
 
-        // Dodaje pliki do kolejki wysyłki, pomijając duplikaty (ta sama nazwa i rozmiar).
-        function addFilesToQueue(fileList) {
-            for (var i = 0; i < fileList.length; i++) {
-                var file = fileList[i];
+        // Reagowanie na dodanie nowych plików do pola wyboru
+        fileInput.addEventListener('change', function() {
+            for (var i = 0; i < fileInput.files.length; i++) {
+                var file = fileInput.files[i];
+                
+                // Unikamy dodawania dokładnie tego samego pliku (o tej samej nazwie i rozmiarze) dwukrotnie
                 var isDuplicate = filesQueue.some(function(f) {
                     return f.name === file.name && f.size === file.size;
                 });
+                
                 if (!isDuplicate) {
                     filesQueue.push(file);
                 }
             }
             updateSelectedFilesListUI();
-        }
-
-        // Reagowanie na dodanie nowych plików do pola wyboru
-        fileInput.addEventListener('change', function() {
-            addFilesToQueue(fileInput.files);
+            
             // Czyszczenie samego inputa, aby uczeń mógł kliknąć "Wybierz plik" ponownie 
             // i wybrać coś innego bez blokowania przeglądarki
             fileInput.value = '';
         });
-
-        {DRAGDROP_SCRIPT}
 
         // Odświeżanie wyglądu listy plików na ekranie (przed wysłaniem)
         function updateSelectedFilesListUI() {
@@ -362,76 +358,38 @@ const listPageTemplate = `<!DOCTYPE html>
 </body>
 </html>`
 
-// dragDropCSS to style wyróżnionego obszaru przeciągania plików.
-const dragDropCSS = `
-        #dropZone {
-            border: 2px dashed #aaa;
-            border-radius: 8px;
-            padding: 18px;
-            margin: 10px 0 15px 0;
-            color: #555;
-            background: #fafafa;
-        }
-        #dropZone.dragover {
-            border-color: #4a90d9;
-            background: #eef4fb;
-            color: #2a5d8a;
-        }
-        #dropZone .drop-hint { text-align: center; }`
+const linkPageTemplate = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Link</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        h2 { margin-bottom: 5px; }
+        .info { color: #555; font-size: 0.9em; margin-bottom: 20px; }
+        .link a { color: #0645ad; font-size: 1.25em; word-break: break-all; }
+        .link a:hover { text-decoration: none; }
+    </style>
+</head>
+<body>
+    <h2>Link</h2>
+    <div class="info">Kliknij link, aby go otworzyć.</div>
+    <p class="link"><a href="{LINK}" target="_blank" rel="noopener noreferrer">{LINK}</a></p>
+</body>
+</html>`
 
-// dragDropZone to podpowiedź wewnątrz obszaru drop (same obramowanie nakłada #dropZone).
-const dragDropZone = `<p class="drop-hint" style="margin-top:0">Przeciągnij pliki tutaj, aby dodać je do wysyłki</p>`
-
-// dragDropScript obsługuje upuszczenie plików w dowolnym miejscu strony;
-// obszar drop służy jako wizualny cel, który podświetla się podczas przeciągania.
-const dragDropScript = `
-        var dropZone = document.getElementById('dropZone');
-        var dragDepth = 0;
-
-        function highlightZone(on) {
-            dropZone.classList.toggle('dragover', on);
-        }
-
-        // Przeciąganie plików nad stroną podświetla obszar drop.
-        document.addEventListener('dragenter', function(e) {
-            if (e.dataTransfer && e.dataTransfer.types.indexOf('Files') !== -1) {
-                dragDepth++;
-                highlightZone(true);
-            }
-        });
-        document.addEventListener('dragleave', function(e) {
-            if (e.dataTransfer && e.dataTransfer.types.indexOf('Files') !== -1) {
-                dragDepth--;
-                if (dragDepth <= 0) {
-                    dragDepth = 0;
-                    highlightZone(false);
-                }
-            }
-        });
-        document.addEventListener('dragover', function(e) {
-            e.preventDefault();
-        });
-        document.addEventListener('drop', function(e) {
-            e.preventDefault();
-            dragDepth = 0;
-            highlightZone(false);
-            if (e.dataTransfer && e.dataTransfer.files.length > 0) {
-                addFilesToQueue(e.dataTransfer.files);
-            }
-        });`
+// renderLinkPage buduje stronę zawierającą wyłącznie klikalny link.
+func renderLinkPage(target string) string {
+	return strings.ReplaceAll(linkPageTemplate, "{LINK}", html.EscapeString(target))
+}
 
 // renderUploadPage buduje stronę z formularzem wysyłania plików.
 // uploadURL to adres, na który trafia POST; returnURL to adres otwierany po udanym wysłaniu.
-// dragDrop włącza wyróżniony obszar przeciągania plików.
-func renderUploadPage(hideList bool, uploadURL, returnURL string, backToList bool, dragDrop bool) string {
+func renderUploadPage(hideList bool, uploadURL, returnURL string, backToList bool) string {
 	backLink := ""
 	if backToList {
 		backLink = `<p class="nav"><a href="/">&larr; Wróć do listy plików</a></p>`
-	}
-
-	dragCSS, dragZone, dragScript := "", "", ""
-	if dragDrop {
-		dragCSS, dragZone, dragScript = dragDropCSS, dragDropZone, dragDropScript
 	}
 
 	r := strings.NewReplacer(
@@ -439,9 +397,6 @@ func renderUploadPage(hideList bool, uploadURL, returnURL string, backToList boo
 		"{RETURN_URL}", returnURL,
 		"{LIST_CONTENT}", renderFormFileList(hideList),
 		"{BACK_LINK}", backLink,
-		"{DRAGDROP_CSS}", dragCSS,
-		"{DRAGDROP_ZONE}", dragZone,
-		"{DRAGDROP_SCRIPT}", dragScript,
 	)
 	return r.Replace(uploadPageTemplate)
 }
@@ -592,6 +547,31 @@ func normalizeMode(raw string) (string, bool) {
 	}
 }
 
+// normalizeLinkURL sprawdza adres linku i uzupełnia brakujący schemat (https://).
+// Dopuszczone są wyłącznie adresy http i https, żeby nie dało się wstawić np. javascript:.
+func normalizeLinkURL(raw string) (string, error) {
+	addr := strings.TrimSpace(raw)
+	if addr == "" {
+		return "", fmt.Errorf("pusty adres linku")
+	}
+	if !strings.Contains(addr, "://") {
+		addr = "https://" + addr
+	}
+
+	u, err := url.Parse(addr)
+	if err != nil {
+		return "", fmt.Errorf("nieprawidłowy adres linku %q: %v", raw, err)
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("nieprawidłowy adres linku %q: dozwolone są tylko adresy http i https", raw)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("nieprawidłowy adres linku %q: brak nazwy serwera", raw)
+	}
+	return u.String(), nil
+}
+
 func getUniqueFilename(filename string) string {
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		return filename
@@ -687,9 +667,9 @@ func main() {
 	port := flag.Int("port", defaultPort, "Port nasłuchu serwera (zakres 1-65535)")
 	tryb := flag.String("tryb", modeUpload, "Tryb pracy: wysylanie (up), serwowanie (down) albo oba (both)")
 	hideList := flag.Bool("brak-listy", false, "Ukrywa listę plików pod formularzem (tryb Blind Drop)")
+	linkURL := flag.String("link", "", "Adres strony pokazywanej zamiast listy plików i formularza (tylko link)")
 	noUpdate := flag.Bool("bez-aktualizacji", false, "Nie sprawdza, czy jest nowa wersja programu")
 	noSTUN := flag.Bool("bez-stun", false, "Nie ustala adresu zewnętrznego przez serwer STUN")
-	noDragDrop := flag.Bool("bez-przeciagania", false, "Wyłącza przeciąganie plików na stronę (obszar drop)")
 	allIfaces := flag.Bool("wszystkie-adresy", false, "Pokazuje też adresy pozostałych interfejsów (np. wirtualnych)")
 
 	var showHelp bool
@@ -733,6 +713,19 @@ func main() {
 		os.Exit(2)
 	}
 
+	// Flaga -link zastępuje tryb pracy: serwer pokazuje tylko stronę z linkiem.
+	linkTarget := ""
+	if *linkURL != "" {
+		normalized, err := normalizeLinkURL(*linkURL)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Błąd: %v\n\n", err)
+			fmt.Fprintf(os.Stderr, "Wpisz '%s --help', aby zobaczyć dostępne opcje.\n", filepath.Base(os.Args[0]))
+			os.Exit(2)
+		}
+		linkTarget = normalized
+		mode = modeLink
+	}
+
 	cleanupOldExecutable()
 	if !*noUpdate {
 		checkForUpdate()
@@ -753,9 +746,14 @@ func main() {
 	})
 
 	switch mode {
+	case modeLink:
+		r.GET("/", func(c *gin.Context) {
+			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(renderLinkPage(linkTarget)))
+		})
+
 	case modeUpload:
 		r.GET("/", func(c *gin.Context) {
-			page := renderUploadPage(*hideList, "/", "/", false, !*noDragDrop)
+			page := renderUploadPage(*hideList, "/", "/", false)
 			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(page))
 		})
 		r.POST("/", handleUpload)
@@ -768,7 +766,7 @@ func main() {
 		r.GET("/", handleListPage(true))
 		r.GET(uploadFormPath, func(c *gin.Context) {
 			// Lista plików jest na stronie głównej, więc pod formularzem jej nie powtarzamy.
-			page := renderUploadPage(true, uploadFormPath, "/", true, !*noDragDrop)
+			page := renderUploadPage(true, uploadFormPath, "/", true)
 			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(page))
 		})
 		r.POST(uploadFormPath, handleUpload)
@@ -782,10 +780,16 @@ func main() {
 
 	fmt.Printf("goupser %s\n", versionString())
 	fmt.Printf("Serwer gotowy. Port: %d (tryb: %s)\n", *port, mode)
-	fmt.Printf("Katalog plików: %s\n", workDir)
+	if mode == modeLink {
+		fmt.Printf("Link: %s\n", linkTarget)
+	} else {
+		fmt.Printf("Katalog plików: %s\n", workDir)
+	}
 
 	printAddr := func(label, host string) {
 		switch mode {
+		case modeLink:
+			fmt.Printf("%s http://%s:%d/ (strona z linkiem)\n", label, host, *port)
 		case modeUpload:
 			fmt.Printf("%s http://%s:%d/ (formularz wysyłania plików)\n", label, host, *port)
 		case modeServe:
@@ -829,9 +833,12 @@ func main() {
 	}
 
 	if *hideList {
-		if mode == modeUpload {
+		switch mode {
+		case modeUpload:
 			fmt.Println("Tryb podglądu listy plików: WYŁĄCZONY (Blind Drop)")
-		} else {
+		case modeLink:
+			fmt.Println("Uwaga: flaga -brak-listy jest ignorowana w trybie -link.")
+		default:
 			fmt.Println("Uwaga: flaga -brak-listy jest ignorowana w tym trybie (lista plików jest częścią serwowania).")
 		}
 	} else if mode == modeUpload {
