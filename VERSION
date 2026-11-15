@@ -1,0 +1,26 @@
+# Numer wersji goupser: pierwsze dwie liczby (GŁÓWNA.POBOCZNA).
+#
+# Trzecią liczbę dopisuje automatycznie GitHub przy każdym pushu na master –
+# jest to liczba commitów w repozytorium. Przykład: wpis 1.0 przy 40 commitach
+# daje wydanie v1.0.40.
+#
+# JAK ZMIENIAĆ
+#   - Zmień liczbę w ostatniej linii tego pliku, zrób commit i push.
+#     To wydanie i wszystkie następne dostaną nowy numer.
+#   - Zwiększaj środkową liczbę: 1.0 -> 1.1 -> 1.2 ...
+#   - Trzecia liczba się nie zeruje: po v1.0.39 będzie v1.1.40, nie v1.1.0.
+#     To nie przeszkadza – ważne tylko, żeby nowa wersja była wyższa.
+#
+# JAK NIE ZMIENIAĆ
+#   - Nie zmniejszaj numeru (np. z 1.1 na 1.0). Zainstalowane programy uznają
+#     takie wydanie za starsze i się nie zaktualizują. Workflow przerwie wtedy
+#     wydanie z błędem.
+#   - Nie zmieniaj pierwszej liczby na 2 lub więcej bez zmiany w go.mod.
+#     Go wymaga wtedy ścieżki modułu z końcówką /v2
+#     (module github.com/maro4444/goupser/v2), inaczej
+#     "go install ...@latest" nie zobaczy nowych wersji.
+#   - Nie wpisuj trzeciej liczby, litery "v" ani niczego poza formatem X.Y.
+#   - Zostaw dokładnie jedną linię z numerem; linie zaczynające się od # to
+#     komentarze i są pomijane.
+
+1.0
