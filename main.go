@@ -143,7 +143,10 @@ func printUsage(w io.Writer) {
 		"{PLIKI}", servePrefix,
 		"{WYSLIJ}", uploadFormPath,
 	)
-	fmt.Fprint(w, r.Replace(usageTemplate))
+	_, err := fmt.Fprint(w, r.Replace(usageTemplate))
+	if err != nil {
+		return
+	}
 }
 
 const uploadPageTemplate = `<!DOCTYPE html>
