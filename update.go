@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +33,22 @@ const (
 // version ustawia GoReleaser podczas budowania (-X main.version=...).
 // Wersja "dev" oznacza build lokalny, który się nie aktualizuje.
 var version = "dev"
+
+// Przy instalacji przez "go install ...@vX.Y.Z" GoReleaser nie bierze udziału,
+// więc wersję odczytujemy z informacji o module wbudowanych w plik programu.
+func init() {
+	if version != "dev" {
+		return
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return
+	}
+	// Tylko czyste wydania (vX.Y.Z); pseudo-wersje i "+dirty" zostają buildem lokalnym.
+	if _, ok := parseVersion(info.Main.Version); ok {
+		version = info.Main.Version
+	}
+}
 
 // versionString zwraca wersję programu do wyświetlenia, np. "v0.1.22".
 func versionString() string {
