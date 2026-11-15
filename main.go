@@ -63,6 +63,9 @@ Flagi:
   -brak-listy
         Ukrywa listę plików pod formularzem (tryb Blind Drop).
         Ma znaczenie tylko w trybie {WYSYLANIE}.
+  -bez-przeciagania
+        Wyłącza przeciąganie plików na stronę (obszar drop).
+        Ma znaczenie tylko w trybach z formularzem wysyłania.
   -bez-aktualizacji
         Nie sprawdza przy starcie, czy jest nowa wersja programu.
   -bez-stun
@@ -149,11 +152,13 @@ const uploadPageTemplate = `<!DOCTYPE html>
         #selectedFilesList { margin-top: 10px; color: #333; font-style: italic; }
         .remove-btn { color: red; margin-left: 10px; cursor: pointer; font-size: 0.8em; font-style: normal; }
         .nav { margin-bottom: 20px; }
+        {DRAGDROP_CSS}
     </style>
 </head>
 <body>
     <h2>Wybierz pliki i naciśnij Prześlij</h2>
     {BACK_LINK}
+    {DRAGDROP_ZONE}
     <form id="uploadForm">
         <!-- Zmieniono przycisk, aby zachęcał do dodawania kolejnych plików -->
         <input type="file" id="fileInput" name="uploadfile" multiple /><br><br>
@@ -173,26 +178,29 @@ const uploadPageTemplate = `<!DOCTYPE html>
         // Globalna tablica przechowująca skumulowane pliki do wysłania
         var filesQueue = [];
 
-        // Reagowanie na dodanie nowych plików do pola wyboru
-        fileInput.addEventListener('change', function() {
-            for (var i = 0; i < fileInput.files.length; i++) {
-                var file = fileInput.files[i];
-                
-                // Unikamy dodawania dokładnie tego samego pliku (o tej samej nazwie i rozmiarze) dwukrotnie
+        // Dodaje pliki do kolejki wysyłki, pomijając duplikaty (ta sama nazwa i rozmiar).
+        function addFilesToQueue(fileList) {
+            for (var i = 0; i < fileList.length; i++) {
+                var file = fileList[i];
                 var isDuplicate = filesQueue.some(function(f) {
                     return f.name === file.name && f.size === file.size;
                 });
-                
                 if (!isDuplicate) {
                     filesQueue.push(file);
                 }
             }
             updateSelectedFilesListUI();
-            
+        }
+
+        // Reagowanie na dodanie nowych plików do pola wyboru
+        fileInput.addEventListener('change', function() {
+            addFilesToQueue(fileInput.files);
             // Czyszczenie samego inputa, aby uczeń mógł kliknąć "Wybierz plik" ponownie 
             // i wybrać coś innego bez blokowania przeglądarki
             fileInput.value = '';
         });
+
+        {DRAGDROP_SCRIPT}
 
         // Odświeżanie wyglądu listy plików na ekranie (przed wysłaniem)
         function updateSelectedFilesListUI() {
@@ -346,12 +354,76 @@ const listPageTemplate = `<!DOCTYPE html>
 </body>
 </html>`
 
+// dragDropCSS to style wyróżnionego obszaru przeciągania plików.
+const dragDropCSS = `
+        #dropZone {
+            border: 2px dashed #aaa;
+            border-radius: 8px;
+            padding: 18px;
+            margin: 10px 0 15px 0;
+            text-align: center;
+            color: #555;
+            background: #fafafa;
+        }
+        #dropZone.dragover {
+            border-color: #4a90d9;
+            background: #eef4fb;
+            color: #2a5d8a;
+        }`
+
+// dragDropZone to widoczny obszar, na który można upuścić pliki.
+const dragDropZone = `<div id="dropZone">Przeciągnij pliki tutaj, aby dodać je do wysyłki</div>`
+
+// dragDropScript obsługuje upuszczenie plików w dowolnym miejscu strony;
+// obszar drop służy jako wizualny cel, który podświetla się podczas przeciągania.
+const dragDropScript = `
+        var dropZone = document.getElementById('dropZone');
+        var dragDepth = 0;
+
+        function highlightZone(on) {
+            dropZone.classList.toggle('dragover', on);
+        }
+
+        // Przeciąganie plików nad stroną podświetla obszar drop.
+        document.addEventListener('dragenter', function(e) {
+            if (e.dataTransfer && e.dataTransfer.types.indexOf('Files') !== -1) {
+                dragDepth++;
+                highlightZone(true);
+            }
+        });
+        document.addEventListener('dragleave', function(e) {
+            if (e.dataTransfer && e.dataTransfer.types.indexOf('Files') !== -1) {
+                dragDepth--;
+                if (dragDepth <= 0) {
+                    dragDepth = 0;
+                    highlightZone(false);
+                }
+            }
+        });
+        document.addEventListener('dragover', function(e) {
+            e.preventDefault();
+        });
+        document.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dragDepth = 0;
+            highlightZone(false);
+            if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+                addFilesToQueue(e.dataTransfer.files);
+            }
+        });`
+
 // renderUploadPage buduje stronę z formularzem wysyłania plików.
 // uploadURL to adres, na który trafia POST; returnURL to adres otwierany po udanym wysłaniu.
-func renderUploadPage(hideList bool, uploadURL, returnURL string, backToList bool) string {
+// dragDrop włącza wyróżniony obszar przeciągania plików.
+func renderUploadPage(hideList bool, uploadURL, returnURL string, backToList bool, dragDrop bool) string {
 	backLink := ""
 	if backToList {
 		backLink = `<p class="nav"><a href="/">&larr; Wróć do listy plików</a></p>`
+	}
+
+	dragCSS, dragZone, dragScript := "", "", ""
+	if dragDrop {
+		dragCSS, dragZone, dragScript = dragDropCSS, dragDropZone, dragDropScript
 	}
 
 	r := strings.NewReplacer(
@@ -359,6 +431,9 @@ func renderUploadPage(hideList bool, uploadURL, returnURL string, backToList boo
 		"{RETURN_URL}", returnURL,
 		"{LIST_CONTENT}", renderFormFileList(hideList),
 		"{BACK_LINK}", backLink,
+		"{DRAGDROP_CSS}", dragCSS,
+		"{DRAGDROP_ZONE}", dragZone,
+		"{DRAGDROP_SCRIPT}", dragScript,
 	)
 	return r.Replace(uploadPageTemplate)
 }
@@ -606,6 +681,7 @@ func main() {
 	hideList := flag.Bool("brak-listy", false, "Ukrywa listę plików pod formularzem (tryb Blind Drop)")
 	noUpdate := flag.Bool("bez-aktualizacji", false, "Nie sprawdza, czy jest nowa wersja programu")
 	noSTUN := flag.Bool("bez-stun", false, "Nie ustala adresu zewnętrznego przez serwer STUN")
+	noDragDrop := flag.Bool("bez-przeciagania", false, "Wyłącza przeciąganie plików na stronę (obszar drop)")
 	allIfaces := flag.Bool("wszystkie-adresy", false, "Pokazuje też adresy pozostałych interfejsów (np. wirtualnych)")
 
 	var showHelp bool
@@ -671,7 +747,7 @@ func main() {
 	switch mode {
 	case modeUpload:
 		r.GET("/", func(c *gin.Context) {
-			page := renderUploadPage(*hideList, "/", "/", false)
+			page := renderUploadPage(*hideList, "/", "/", false, !*noDragDrop)
 			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(page))
 		})
 		r.POST("/", handleUpload)
@@ -684,7 +760,7 @@ func main() {
 		r.GET("/", handleListPage(true))
 		r.GET(uploadFormPath, func(c *gin.Context) {
 			// Lista plików jest na stronie głównej, więc pod formularzem jej nie powtarzamy.
-			page := renderUploadPage(true, uploadFormPath, "/", true)
+			page := renderUploadPage(true, uploadFormPath, "/", true, !*noDragDrop)
 			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(page))
 		})
 		r.POST(uploadFormPath, handleUpload)
