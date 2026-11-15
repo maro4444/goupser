@@ -778,6 +778,11 @@ func main() {
 		workDir = "."
 	}
 
+	fmt.Println(`  __ _  ___  _   _ _ __  ___  ___ _ __
+ / _` + "`" + ` |/ _ \| | | | '_ \/ __|/ _ \ '__|
+| (_| | (_) | |_| | |_) \__ \  __/ |
+ \__, |\___/ \__,_| .__/|___/\___|_|
+ |___/            |_|`)
 	fmt.Printf("goupser %s\n", versionString())
 	fmt.Printf("Serwer gotowy. Port: %d (tryb: %s)\n", *port, mode)
 	if mode == modeLink {
