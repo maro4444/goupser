@@ -26,7 +26,20 @@ jobs:
       - name: Create and Push Automatic Tag
         run: |
           COMMITS_COUNT=$(git rev-list --count HEAD)
-          TAG_NAME="v0.1.${COMMITS_COUNT}"
+          # Pierwsze dwie liczby wersji pochodzą z pliku VERSION (tam jest opis zasad).
+          PREFIX=$(grep -v '^[[:space:]]*#' VERSION | tr -d '\r[:blank:]' | grep -m1 . || true)
+          if ! [[ "$PREFIX" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Plik VERSION musi zawierać numer w formacie X.Y (np. 1.0), a jest: '${PREFIX}'"
+            exit 1
+          fi
+          TAG_NAME="v${PREFIX}.${COMMITS_COUNT}"
+
+          # Nowe wydanie nie może być niższe od najwyższego istniejącego taga.
+          HIGHEST=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [ -n "$HIGHEST" ] && [ "$(printf '%s\n%s\n' "$HIGHEST" "$TAG_NAME" | sort -V | tail -n1)" != "$TAG_NAME" ]; then
+            echo "::error::Wersja ${TAG_NAME} byłaby niższa od istniejącej ${HIGHEST}. Zwiększ numer w pliku VERSION."
+            exit 1
+          fi
           
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
